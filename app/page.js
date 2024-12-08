@@ -1,98 +1,133 @@
 'use client';
 
-import Navbar from "./components/Navbar";
-import { useState } from "react";
-import AddHabitModal from "./components/AddHabitModal";
-import HabitList from "./components/HabitList";
+import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 
-function Home() {
+export default function DailyTrackerPage() {
   const [habits, setHabits] = useState([]);
-  
-  const addHabit = (name) => {
-    const newHabit = {
-      id: Date.now(),
-      name,
-      isComplete: false,
-      createdAt: new Date().toLocaleString(),
-      completedAt: null,
-      streak: 0,
-      lastCompletedAt: null,
+  const [newHabit, setNewHabit] = useState(''); // State for the new habit input
+
+  useEffect(() => {
+    const savedHabits = JSON.parse(localStorage.getItem('habits')) || [];
+    setHabits(savedHabits);
+  }, []);
+
+  // Function to calculate streak for a habit
+  const calculateStreak = (habit) => {
+    let streak = 0;
+
+    // Check for consecutive completion from the last day
+    for (let i = habit.completion.length - 1; i >= 0; i--) {
+      if (habit.completion[i]) {
+        streak++;
+      } else {
+        break;
+      }
+    }
+
+    return streak;
+  };
+
+  // Toggle habit completion
+  const toggleCompletion = (habitId) => {
+    const updatedHabits = habits.map((habit) => {
+      if (habit.id === habitId) {
+        const updatedCompletion = [
+          ...habit.completion,
+          !habit.completed, // Toggle completion status for the new day
+        ];
+        return { ...habit, completed: !habit.completed, completion: updatedCompletion };
+      }
+      return habit;
+    });
+
+    setHabits(updatedHabits);
+    localStorage.setItem('habits', JSON.stringify(updatedHabits));
+  };
+
+  // Add a new habit
+  const addHabit = () => {
+    if (newHabit.trim() === '') return; // Don't add empty habits
+    const newHabitObj = {
+      id: Date.now(), // Unique id using timestamp
+      name: newHabit,
+      completed: false,
+      completion: [] // Empty array for completion status
     };
-    setHabits([...habits, newHabit]);
+
+    const updatedHabits = [...habits, newHabitObj];
+    setHabits(updatedHabits);
+    setNewHabit(''); // Clear the input field after adding the habit
+    localStorage.setItem('habits', JSON.stringify(updatedHabits));
   };
 
-  const toggleHabit = (id) => {
-    setHabits(
-      habits.map((habit) => {
-        if (habit.id === id) {
-          const isComplete = !habit.isComplete;
-          let newStreak = habit.streak;
-          let lastCompletedAt = habit.lastCompletedAt;
-  
-          if (isComplete) {
-            const today = new Date();
-            const yesterday = new Date();
-            yesterday.setDate(today.getDate() - 1);
-  
-            const lastDate = new Date(habit.lastCompletedAt);
-  
-            if (
-              lastCompletedAt &&
-              lastDate.toDateString() === yesterday.toDateString()
-            ) {
-              newStreak += 1; // Increment streak
-            } else if (
-              !lastCompletedAt ||
-              lastDate.toDateString() !== today.toDateString()
-            ) {
-              newStreak = 1; // Reset streak to 1
-            }
-  
-            lastCompletedAt = today.toISOString();
-          } else {
-            newStreak = 0; // Reset streak on uncheck
-            lastCompletedAt = null;
-          }
-  
-          return {
-            ...habit,
-            isComplete,
-            streak: newStreak,
-            lastCompletedAt,
-          };
-        }
-        return habit;
-      })
-    );
-  };
-  
-
-  const deleteHabit = (id) => {
-    setHabits(habits.filter((habit) => habit.id !== id));
-  };
-
-  const updateHabit = (id, name) => {
-    setHabits(
-      habits.map((habit) =>
-        habit.id === id
-          ? { ...habit, name }
-          : habit
-      )
-    );
+  // Delete a habit
+  const deleteHabit = (habitId) => {
+    const updatedHabits = habits.filter((habit) => habit.id !== habitId);
+    setHabits(updatedHabits);
+    localStorage.setItem('habits', JSON.stringify(updatedHabits));
   };
 
   return (
     <div className="min-h-screen bg-gray-800 p-4">
-      <h1 className="text-2xl font-bold mb-4">Habit Tracker</h1>
-      <AddHabitModal addHabit={addHabit} />
-      <HabitList 
-        habits={habits} 
-        toggleHabit={toggleHabit}
-        deleteHabit={deleteHabit} 
-        updateHabit={updateHabit}
+      <div className="flex justify-between items-center mb-4">
+        <h1 className="text-2xl font-bold text-white">Daily Tracker</h1>
+        <div className="flex space-x-4">
+          <Link href="/monthly-tracker" className="text-blue-500 hover:underline">
+            Monthly Tracker
+          </Link>
+        </div>
+      </div>
+
+      {/* New Habit Input */}
+      <div className="mb-4 flex items-center space-x-2">
+        <input
+          type="text"
+          value={newHabit}
+          onChange={(e) => setNewHabit(e.target.value)} // Update state on input change
+          className="p-2 bg-gray-700 text-white rounded"
+          placeholder="Add a new habit"
         />
+        <button
+          onClick={addHabit}
+          className="p-2 bg-blue-500 text-white rounded hover:bg-blue-700"
+        >
+          Add Habit
+        </button>
+      </div>
+
+      {/* Habit List */}
+      <div className="space-y-4">
+        {habits.map((habit) => (
+          <div key={habit.id} className="flex justify-between items-center bg-gray-700 p-4 rounded">
+            <span className="text-white">{habit.name}</span>
+            <div className="flex items-center space-x-4">
+              {/* Completion Button */}
+              <button
+                onClick={() => toggleCompletion(habit.id)}
+                className={`p-2 text-white rounded ${habit.completed ? 'bg-green-500' : 'bg-gray-600'}`}
+              >
+                {habit.completed ? (
+                  <span className="text-xl">&#10003;</span> // Checkmark
+                ) : (
+                  <span className="text-xl">&#x2714;</span> // Empty box
+                )}
+              </button>
+
+              {/* Display Streak */}
+              <span className="text-white">{calculateStreak(habit)} Day Streak</span>
+
+              {/* Delete Button */}
+              <button
+                onClick={() => deleteHabit(habit.id)}
+                className="p-2 bg-red-500 text-white rounded hover:bg-red-700"
+              >
+                <span className="text-xl">×</span> {/* 'X' icon */}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
-   
-        
-}export default Home;
+}
