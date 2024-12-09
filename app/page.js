@@ -3,28 +3,36 @@
 import React, { useState, useEffect, use } from 'react';
 import { useRouter } from 'next/navigation'; // For navigation
 import { onAuthStateChanged, signOut } from 'firebase/auth'; // Firebase auth state listener
-import { auth } from './_utils/firebase';
+import { auth, db } from './_utils/firebase';
 import Link from 'next/link';
+import { collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 
 export default function DailyTrackerPage() {
   const [habits, setHabits] = useState([]);
   const [newHabit, setNewHabit] = useState(''); // State for the new habit input
-  const router = useRouter();
+  const router = useRouter(); 
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (!user) {
-        router.push('/landingpage'); // Redirect to login page if user is not logged in
+        router.push('/landingpage'); // Redirect if not logged in
+        return;
       }
+  
+      const habitsRef = collection(db, 'users', user.uid, 'habits'); 
+      const unsubscribeHabits = onSnapshot(habitsRef, (snapshot) => {
+        const fetchedHabits = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        setHabits(fetchedHabits); 
+      });
+  
+      return () => unsubscribeHabits();
     });
-    
-    return () => unsubscribe();
+  
+    return () => unsubscribe(); 
   }, [router]);
-
-  useEffect(() => {
-    const savedHabits = JSON.parse(localStorage.getItem('habits')) || [];
-    setHabits(savedHabits);
-  }, []);
 
   const handleLogout = async () => {
     try {
@@ -38,11 +46,11 @@ export default function DailyTrackerPage() {
 
   // Function to calculate streak for a habit
   const calculateStreak = (habit) => {
+    const days = Object.keys(habit.completion).sort((a, b) => b - a); // Sort days in descending order
     let streak = 0;
 
-    // Check for consecutive completion from the last day
-    for (let i = habit.completion.length - 1; i >= 0; i--) {
-      if (habit.completion[i]) {
+    for (const day of days) {
+      if (habit.completion[day]) {
         streak++;
       } else {
         break;
@@ -53,43 +61,60 @@ export default function DailyTrackerPage() {
   };
 
   // Toggle habit completion
-  const toggleCompletion = (habitId) => {
-    const updatedHabits = habits.map((habit) => {
-      if (habit.id === habitId) {
-        const updatedCompletion = [
-          ...habit.completion,
-          !habit.completed, // Toggle completion status for the new day
-        ];
-        return { ...habit, completed: !habit.completed, completion: updatedCompletion };
-      }
-      return habit;
-    });
-
-    setHabits(updatedHabits);
-    localStorage.setItem('habits', JSON.stringify(updatedHabits));
+  const toggleCompletion = async (habitId) => {
+    if (!auth.currentUser) return; // Ensure user is logged in
+  
+    const habitDocRef = doc(db, 'users', auth.currentUser.uid, 'habits', habitId); // Reference to the habit document
+  
+    const habitToUpdate = habits.find((habit) => habit.id === habitId);
+    if (!habitToUpdate) return;
+  
+    const updatedCompletion = {
+      ...habitToUpdate.completion,
+      [new Date().getDate()]: !habitToUpdate.completion?.[new Date().getDate()], // Toggle today's completion
+    };
+  
+    try {
+      await updateDoc(habitDocRef, { completion: updatedCompletion }); // Update Firestore
+      console.log('Habit completion updated!');
+    } catch (error) {
+      console.error('Error updating completion:', error);
+    }
   };
 
   // Add a new habit
-  const addHabit = () => {
-    if (newHabit.trim() === '') return; // Don't add empty habits
+  const addHabit = async () => {
+    if (!auth.currentUser || newHabit.trim() === '') return; // Ensure user is logged in and input is valid
+  
+    const habitsRef = collection(db, 'users', auth.currentUser.uid, 'habits'); // Path to habits subcollection
+  
     const newHabitObj = {
-      id: Date.now(), // Unique id using timestamp
       name: newHabit,
-      completed: false,
-      completion: [] // Empty array for completion status
+      completion: {}, // Start with an empty map for completion
+      createdAt: serverTimestamp(), // Firestore server timestamp
     };
-
-    const updatedHabits = [...habits, newHabitObj];
-    setHabits(updatedHabits);
-    setNewHabit(''); // Clear the input field after adding the habit
-    localStorage.setItem('habits', JSON.stringify(updatedHabits));
+  
+    try {
+      await addDoc(habitsRef, newHabitObj); // Add habit to Firestore
+      setNewHabit(''); // Clear input
+      console.log('Habit added successfully!');
+    } catch (error) {
+      console.error('Error adding habit:', error);
+    }
   };
 
   // Delete a habit
-  const deleteHabit = (habitId) => {
-    const updatedHabits = habits.filter((habit) => habit.id !== habitId);
-    setHabits(updatedHabits);
-    localStorage.setItem('habits', JSON.stringify(updatedHabits));
+  const deleteHabit = async (habitId) => {
+    if (!auth.currentUser) return; // Ensure user is logged in
+  
+    const habitDocRef = doc(db, 'users', auth.currentUser.uid, 'habits', habitId); // Reference to the habit document
+  
+    try {
+      await deleteDoc(habitDocRef); // Delete habit from Firestore
+      console.log('Habit deleted successfully!');
+    } catch (error) {
+      console.error('Error deleting habit:', error);
+    }
   };
 
   return (
