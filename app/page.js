@@ -1,16 +1,40 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, use } from 'react';
+import { useRouter } from 'next/navigation'; // For navigation
+import { onAuthStateChanged, signOut } from 'firebase/auth'; // Firebase auth state listener
+import { auth } from './_utils/firebase';
 import Link from 'next/link';
 
 export default function DailyTrackerPage() {
   const [habits, setHabits] = useState([]);
   const [newHabit, setNewHabit] = useState(''); // State for the new habit input
+  const router = useRouter();
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        router.push('/landingpage'); // Redirect to login page if user is not logged in
+      }
+    });
+    
+    return () => unsubscribe();
+  }, [router]);
 
   useEffect(() => {
     const savedHabits = JSON.parse(localStorage.getItem('habits')) || [];
     setHabits(savedHabits);
   }, []);
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth); // Firebase signOut function
+      console.log("User signed out successfully");
+      router.push('/landingpage'); // Redirect to login page
+    } catch (error) {
+      console.error("Error logging out:", error);
+    }
+  };
 
   // Function to calculate streak for a habit
   const calculateStreak = (habit) => {
@@ -76,6 +100,12 @@ export default function DailyTrackerPage() {
           <Link href="/monthly-tracker" className="text-blue-500 hover:underline">
             Monthly Tracker
           </Link>
+          <button
+            onClick={handleLogout}
+            className="text-red-500 hover:underline"
+          >
+            Logout
+          </button>
         </div>
       </div>
 
